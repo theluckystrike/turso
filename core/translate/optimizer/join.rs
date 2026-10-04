@@ -1755,7 +1755,12 @@ pub(crate) fn compute_best_join_order_with_context<'a>(
                     .iter()
                     .any(|t| matches!(t.table, crate::schema::Table::RecursiveCteInput(_)));
                 let has_correlated_subquery = subqueries.iter().any(|sq| sq.correlated);
-                let msg = if build_is_outer {
+                let has_lateral_that_reads_its_left_side = joined_tables
+                    .iter()
+                    .any(|t| t.join_info.as_ref().is_some_and(|ji| ji.lateral));
+                let msg = if has_lateral_that_reads_its_left_side {
+                    "FULL OUTER JOIN is not supported with LATERAL subqueries that read the tables on their left"
+                } else if build_is_outer {
                     "FULL OUTER JOIN chaining is not yet supported"
                 } else if has_recursive_input {
                     "FULL OUTER JOIN with a recursive reference is not yet supported"
