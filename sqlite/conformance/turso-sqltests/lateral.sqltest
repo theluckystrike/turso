@@ -271,6 +271,23 @@ expect {
     3|30|33
 }
 
+@setup tables
+test lateral-in-list-reads-the-table-on-its-left {
+    CREATE INDEX t2_b ON t2(b);
+    SELECT t1.a, s.c
+    FROM t1, LATERAL (SELECT c FROM t2 WHERE t2.b IN (t1.a, t1.a + 1)) AS s
+    ORDER BY 1, 2;
+}
+expect {
+    1|x
+    1|y
+    1|z
+    2|w
+    2|y
+    2|z
+    3|w
+}
+
 test lateral-as-the-first-from-item {
     SELECT * FROM LATERAL (SELECT 1 AS a) AS s;
 }

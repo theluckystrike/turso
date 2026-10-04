@@ -992,3 +992,38 @@ test in-cross-table-column-ref {
 expect {
     1
 }
+
+setup outer-values {
+    CREATE TABLE ov_outer(id INTEGER PRIMARY KEY, a INT);
+    CREATE TABLE ov_inner(id INTEGER PRIMARY KEY, x INT);
+    CREATE INDEX ov_inner_x ON ov_inner(x);
+    INSERT INTO ov_outer VALUES (1, 1), (2, 2), (3, NULL);
+    INSERT INTO ov_inner VALUES (1, 1), (2, 2), (3, 3);
+}
+
+@setup outer-values
+test index-in-list-reads-a-column-of-the-outer-loop {
+    SELECT ov_outer.id, ov_inner.id
+    FROM ov_outer, ov_inner
+    WHERE ov_inner.x IN (ov_outer.a, ov_outer.a + 1)
+    ORDER BY 1, 2;
+}
+expect {
+    1|1
+    1|2
+    2|2
+    2|3
+}
+
+@setup outer-values
+test index-in-list-reads-a-column-of-the-outer-query {
+    SELECT ov_outer.id,
+      (SELECT count(*) FROM ov_inner WHERE ov_inner.x IN (ov_outer.a, ov_outer.a + 1))
+    FROM ov_outer
+    ORDER BY 1;
+}
+expect {
+    1|2
+    2|2
+    3|0
+}
