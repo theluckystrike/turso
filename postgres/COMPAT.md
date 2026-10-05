@@ -69,7 +69,7 @@ Basics not enumerated by the official feature matrix.
 The pg_catalog tables emulated (live, reflecting real schema): `pg_class`,
 `pg_namespace`, `pg_attribute`, `pg_type` (builtin + array + enum types),
 `pg_index`, `pg_constraint`, `pg_attrdef`, `pg_tables`, `pg_sequences`,
-`pg_database`, `pg_roles` (single hardcoded `turso` role), `pg_proc`, `pg_am`,
+`pg_database`, `pg_roles` (built-in `postgres` superuser and roles from `CREATE ROLE`), `pg_proc`, `pg_am`,
 plus `pg_input_error_info`. Present but always empty: `pg_policy`,
 `pg_trigger`, `pg_statistic_ext`, `pg_inherits`, `pg_rewrite`,
 `pg_foreign_table`, `pg_partitioned_table`, `pg_collation`, `pg_description`,
@@ -386,7 +386,7 @@ Upgrade is not supported.
 | Per user/database connection limits | ❌ Not supported | |
 | Predefined roles | ❌ Not supported | |
 | Privileges for setting configuration parameters | ❌ Not supported | |
-| ROLES | ❌ Not supported | pg_roles exposes a single hardcoded `turso` role |
+| ROLES | 🟡 Partial | `CREATE ROLE name` only, with no options; `pg_roles` lists the built-in `postgres` superuser and created roles |
 | Row-level security | ❌ Not supported | |
 | SCRAM-SHA-256 authentication | ❌ Not supported | |
 | Search+bind mode operation for LDAP authentication | ❌ Not supported | |

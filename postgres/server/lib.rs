@@ -657,6 +657,8 @@ fn command_tag(query: &str, affected_rows: usize) -> Tag {
         Tag::new("CREATE INDEX")
     } else if upper.starts_with("CREATE SCHEMA") {
         Tag::new("CREATE SCHEMA")
+    } else if upper.starts_with("CREATE ROLE") {
+        Tag::new("CREATE ROLE")
     } else if is_create_table_as(&upper) {
         // PostgreSQL reports CREATE TABLE AS completion as `SELECT n` (the
         // rows inserted), except WITH NO DATA which skips the insert and
