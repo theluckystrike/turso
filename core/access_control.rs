@@ -120,6 +120,18 @@ impl RoleCatalog {
         self.roles.values()
     }
 
+    /// A role that does not exist is not a superuser.
+    pub fn is_superuser(&self, id: RoleId) -> bool {
+        self.get(id).is_some_and(|role| role.superuser)
+    }
+
+    /// Whether a session whose login role is `member` may switch to `role`
+    /// with `SET ROLE`. Role membership does not exist yet, so only a
+    /// superuser may switch to another role.
+    pub fn can_set_role(&self, member: RoleId, role: RoleId) -> bool {
+        member == role || self.is_superuser(member)
+    }
+
     pub(crate) fn add(&mut self, role: Role) {
         assert!(
             !self.roles.contains_key(&role.id),
