@@ -873,7 +873,7 @@ fn format_float_scientific(v: f64, precision: usize) -> String {
                 if negative { "-" } else { "" },
                 first,
                 rest,
-                if exp.is_positive() { "+" } else { "-" },
+                if exp >= 0 { "+" } else { "-" },
                 exp.abs(),
                 width = if exp.abs() > 99 { 3 } else { 2 }
             )
@@ -919,6 +919,14 @@ pub fn format_float(v: f64) -> String {
 }
 
 pub fn format_float_for_quote(v: f64) -> String {
+    if v.is_infinite() {
+        return if v.is_sign_negative() {
+            "-9.0e+999"
+        } else {
+            "9.0e+999"
+        }
+        .to_string();
+    }
     let default = format_float(v);
     if str_to_f64(&default).map(f64::from) == Some(v) {
         return default;
