@@ -1,3 +1,4 @@
+use crate::access_control::{RoleCatalog, ROLES_TABLE_NAME, SELECT_ROLES_SQL};
 use crate::alloc::TryClone;
 use crate::error::io_error;
 #[cfg(any(test, injected_yields))]
@@ -242,6 +243,11 @@ enum ReparsePhase {
     LoadTypes {
         stmt: Box<Statement>,
         type_rows: Vec<String>,
+    },
+    /// Loading roles from the roles table into the role catalog.
+    LoadRoles {
+        stmt: Box<Statement>,
+        rows: Vec<Vec<Value>>,
     },
     /// Best-effort ANALYZE-stats refresh before finalizing.
     RefreshStats {
@@ -1659,9 +1665,7 @@ impl Connection {
                             type_rows: Vec::new(),
                         };
                     } else {
-                        inner.phase = ReparsePhase::RefreshStats {
-                            stats: Default::default(),
-                        };
+                        inner.phase = self.load_roles_phase(&inner.fresh)?;
                     }
                 }
                 ReparsePhase::LoadTypes { stmt, type_rows } => {
@@ -1680,17 +1684,23 @@ impl Connection {
                             if let Err(e) = inner.fresh.load_type_definitions(&type_rows) {
                                 tracing::warn!("Failed to load custom types: {}", e);
                             }
-                            inner.phase = ReparsePhase::RefreshStats {
-                                stats: Default::default(),
-                            };
+                            inner.phase = self.load_roles_phase(&inner.fresh)?;
                         }
                         Err(e) => {
                             tracing::warn!("Failed to load custom types: {}", e);
-                            inner.phase = ReparsePhase::RefreshStats {
-                                stats: Default::default(),
-                            };
+                            inner.phase = self.load_roles_phase(&inner.fresh)?;
                         }
                     }
+                }
+                ReparsePhase::LoadRoles { stmt, rows } => {
+                    crate::return_if_io!(stmt.run_with_row_callback_nonblock(|row| {
+                        rows.push(row.get_values().cloned().collect());
+                        Ok(())
+                    }));
+                    inner.fresh.roles = Arc::new(RoleCatalog::from_rows(rows)?);
+                    inner.phase = ReparsePhase::RefreshStats {
+                        stats: Default::default(),
+                    };
                 }
                 ReparsePhase::RefreshStats { stats } => {
                     // Best-effort load stats if sqlite_stat1 is present.
@@ -1714,6 +1724,27 @@ impl Connection {
                 }
             }
         }
+    }
+
+    /// Returns the phase that loads the roles table into `fresh`, or the
+    /// stats refresh phase if the database has no roles table. The fresh
+    /// schema is installed first, because the current schema may not contain
+    /// the roles table yet.
+    fn load_roles_phase(self: &Arc<Connection>, fresh: &Schema) -> Result<ReparsePhase> {
+        if !fresh.tables.contains_key(ROLES_TABLE_NAME) {
+            return Ok(ReparsePhase::RefreshStats {
+                stats: Default::default(),
+            });
+        }
+        self.with_schema_mut(|schema| {
+            *schema = fresh.try_clone()?;
+            Ok::<_, crate::alloc::TryReserveError>(())
+        })??;
+        let stmt = self.prepare_internal(SELECT_ROLES_SQL)?;
+        Ok(ReparsePhase::LoadRoles {
+            stmt: Box::new(stmt),
+            rows: Vec::new(),
+        })
     }
 
     pub(crate) fn read_current_schema_cookie(&self) -> Result<u32> {
@@ -2018,6 +2049,22 @@ impl Connection {
             Ok(())
         })?;
         Ok(type_rows)
+    }
+
+    /// Reads the roles table into a role catalog. The connection's schema
+    /// must already contain the table definitions.
+    pub(crate) fn query_stored_roles(self: &Arc<Connection>) -> Result<RoleCatalog> {
+        let has_roles_table = self.schema.read().tables.contains_key(ROLES_TABLE_NAME);
+        if !has_roles_table {
+            return Ok(RoleCatalog::new());
+        }
+        let mut stmt = self.prepare_internal(SELECT_ROLES_SQL)?;
+        let mut rows = Vec::new();
+        stmt.run_with_row_callback(|row| {
+            rows.push(row.get_values().cloned().collect());
+            Ok(())
+        })?;
+        RoleCatalog::from_rows(&rows)
     }
 
     pub fn maybe_update_schema(&self) {
@@ -3849,6 +3896,11 @@ impl Connection {
 
     pub(crate) fn attached_databases(&self) -> &RwLock<DatabaseCatalog> {
         &self.attached_databases
+    }
+
+    /// Returns the roles of the main database as seen by this connection.
+    pub fn role_catalog(&self) -> Arc<RoleCatalog> {
+        self.with_schema(MAIN_DB_ID, |schema| schema.roles.clone())
     }
 
     /// Access schema for a database using a closure pattern to avoid cloning

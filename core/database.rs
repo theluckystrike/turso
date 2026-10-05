@@ -1665,6 +1665,17 @@ impl Database {
                         }
                     }
 
+                    conn.maybe_update_schema();
+                    let roles = conn.query_stored_roles()?;
+                    state
+                        .db
+                        .as_ref()
+                        .expect("db must be initialized in Init phase")
+                        .with_schema_mut(|schema| {
+                            schema.roles = Arc::new(roles);
+                            Ok(())
+                        })?;
+
                     state.phase = OpenDbAsyncPhase::BootstrapMvStore;
                 }
 

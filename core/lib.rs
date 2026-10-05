@@ -12,6 +12,7 @@
 )]
 #![recursion_limit = "256"]
 
+pub mod access_control;
 pub mod alloc;
 pub mod busy;
 pub mod cdc;
